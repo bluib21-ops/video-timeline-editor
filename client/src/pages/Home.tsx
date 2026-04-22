@@ -1,25 +1,446 @@
 import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
-import { Streamdown } from 'streamdown';
+import { Slider } from "@/components/ui/slider";
+import { 
+  Play, 
+  Pause, 
+  Volume2, 
+  VolumeX, 
+  Maximize, 
+  Upload, 
+  Image, 
+  Video, 
+  Music, 
+  Type,
+  ZoomIn,
+  ZoomOut,
+} from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import TimelineEditor from "@/components/TimelineEditor";
+import VideoPreview from "@/components/VideoPreview";
+import ClipProperties from "@/components/ClipProperties";
+import { useKeyboardShortcuts } from "@/components/KeyboardShortcuts";
 
 /**
- * All content in this page are only for example, replace with your own feature implementation
- * When building pages, remember your instructions in Frontend Best Practices, Design Guide and Common Pitfalls
+ * Design Philosophy: Cinematic Dark Minimalism
+ * - Dark theme (#0f0f0f background) reduces eye strain
+ * - Emerald green accents (#10b981) for interactive elements
+ * - Minimal UI with focus on content
+ * - Professional video editing aesthetic
  */
+
+interface Clip {
+  id: string;
+  type: 'video' | 'image' | 'audio' | 'text';
+  startTime: number;
+  duration: number;
+  trackId: string;
+  source?: string;
+  text?: string;
+  properties?: {
+    opacity?: number;
+    scale?: number;
+    rotation?: number;
+    x?: number;
+    y?: number;
+    fontSize?: number;
+    color?: string;
+  };
+}
+
+interface Track {
+  id: string;
+  type: 'video' | 'audio' | 'text';
+  label: string;
+  clips: Clip[];
+  height: number;
+}
+
 export default function Home() {
-  // If theme is switchable in App.tsx, we can implement theme toggling like this:
-  // const { theme, toggleTheme } = useTheme();
+  const [isPlaying, setIsPlaying] = useState<boolean>(false);
+  const [isMuted, setIsMuted] = useState(false);
+  const [currentTime, setCurrentTime] = useState(0);
+  const [duration, setDuration] = useState(5);
+  const [volume, setVolume] = useState(100);
+  const [zoomLevel, setZoomLevel] = useState(1);
+  const [selectedClipId, setSelectedClipId] = useState<string | null>(null);
+  
+  const [tracks, setTracks] = useState<Track[]>([
+    { id: 'track-1', type: 'video', label: 'Video', clips: [], height: 100 },
+    { id: 'track-2', type: 'audio', label: 'Audio', clips: [], height: 60 },
+    { id: 'track-3', type: 'text', label: 'Text', clips: [], height: 60 },
+  ]);
+
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const animationRef = useRef<number | undefined>(undefined);
+
+  // Handler functions
+  const handlePlayPause = (): void => {
+    setIsPlaying(!isPlaying);
+  };
+
+  const handleMute = (): void => {
+    setIsMuted(!isMuted);
+  };
+
+  const handleFullscreen = (): void => {
+    if (canvasRef.current) {
+      canvasRef.current.requestFullscreen?.();
+    }
+  };
+
+  const handleAddClip = (type: 'video' | 'image' | 'audio' | 'text'): void => {
+    const trackId = type === 'audio' ? 'track-2' : type === 'text' ? 'track-3' : 'track-1';
+    const newClip: Clip = {
+      id: `clip-${Date.now()}`,
+      type,
+      startTime: currentTime,
+      duration: 2,
+      trackId,
+      source: type === 'text' ? 'Sample Text' : `${type}-sample`,
+      text: type === 'text' ? 'Add your text here' : undefined,
+      properties: {
+        opacity: 1,
+        scale: 1,
+        rotation: 0,
+        x: 0,
+        y: 0,
+        fontSize: 24,
+        color: '#ffffff',
+      },
+    };
+
+    setTracks(prev => 
+      prev.map(track => 
+        track.id === trackId 
+          ? { ...track, clips: [...track.clips, newClip] }
+          : track
+      )
+    );
+  };
+
+  const handleDeleteClip = (clipId: string): void => {
+    setTracks(prev =>
+      prev.map(track => ({
+        ...track,
+        clips: track.clips.filter(clip => clip.id !== clipId),
+      }))
+    );
+    setSelectedClipId(null);
+  };
+
+  const handleDuplicateClip = (clipId: string): void => {
+    const clip = tracks
+      .flatMap(t => t.clips)
+      .find(c => c.id === clipId);
+    
+    if (!clip) return;
+
+    const newClip: Clip = {
+      ...clip,
+      id: `clip-${Date.now()}`,
+      startTime: clip.startTime + clip.duration,
+    };
+
+    setTracks(prev =>
+      prev.map(track =>
+        track.id === clip.trackId
+          ? { ...track, clips: [...track.clips, newClip] }
+          : track
+      )
+    );
+  };
+
+  // Keyboard shortcuts
+  useKeyboardShortcuts({
+    onPlayPause: handlePlayPause,
+    onDelete: () => selectedClipId && handleDeleteClip(selectedClipId),
+    onDuplicate: () => selectedClipId && handleDuplicateClip(selectedClipId),
+    selectedClipId,
+  });
+
+  // Animation loop for playback
+  useEffect(() => {
+    if (!isPlaying) return;
+
+    const animate = () => {
+      setCurrentTime(prev => {
+        const newTime = prev + 1 / 30;
+        if (newTime >= duration) {
+          setIsPlaying(false);
+          return duration;
+        }
+        return newTime;
+      });
+      animationRef.current = requestAnimationFrame(animate);
+    };
+
+    animationRef.current = requestAnimationFrame(animate);
+
+    return () => {
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
+    };
+  }, [isPlaying, duration]);
+
+  const formatTime = (seconds: number) => {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = Math.floor(seconds % 60);
+    const ms = Math.floor((seconds % 1) * 100);
+    
+    if (hours > 0) {
+      return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
+    return `${minutes.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}:${ms.toString().padStart(2, '0')}`;
+  };
 
   return (
-    <div className="min-h-screen flex flex-col">
-      <main>
-        {/* Example: lucide-react for icons */}
-        <Loader2 className="animate-spin" />
-        Example Page
-        {/* Example: Streamdown for markdown rendering */}
-        <Streamdown>Any **markdown** content</Streamdown>
-        <Button variant="default">Example Button</Button>
-      </main>
+    <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Header */}
+      <header className="border-b border-border bg-card/50 backdrop-blur-sm">
+        <div className="container flex items-center justify-between h-16">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded bg-accent flex items-center justify-center">
+              <Video className="w-5 h-5 text-accent-foreground" />
+            </div>
+            <h1 className="text-xl font-bold">Video Timeline Pro</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <a 
+              href="https://discord.gg" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+            >
+              Join our discord
+            </a>
+            <Button variant="outline" size="sm">
+              Discord
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Preview Section */}
+        <div className="flex-1 flex flex-col items-center justify-center bg-background/50 border-b border-border p-6 overflow-auto">
+          <VideoPreview 
+            ref={canvasRef}
+            currentTime={currentTime}
+            tracks={tracks}
+            width={800}
+            height={450}
+          />
+        </div>
+
+        {/* Playback Controls */}
+        <div className="bg-card border-b border-border p-4">
+          <div className="flex items-center gap-4 mb-4">
+            <div className="flex items-center gap-2">
+              <Button
+                size="sm"
+                variant={isPlaying ? "default" : "outline"}
+                onClick={handlePlayPause}
+                className="w-10 h-10 p-0"
+                title={isPlaying ? "Pause" : "Play"}
+              >
+                {isPlaying ? (
+                  <Pause className="w-4 h-4" />
+                ) : (
+                  <Play className="w-4 h-4" />
+                )}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleMute}
+                className="w-10 h-10 p-0"
+                title={isMuted ? "Unmute" : "Mute"}
+              >
+                {isMuted ? (
+                  <VolumeX className="w-4 h-4" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </Button>
+
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={handleFullscreen}
+                className="w-10 h-10 p-0"
+                title="Fullscreen"
+              >
+                <Maximize className="w-4 h-4" />
+              </Button>
+            </div>
+
+            <div className="flex-1 flex items-center gap-3">
+              <Slider
+                value={[currentTime]}
+                onValueChange={([value]) => setCurrentTime(value)}
+                max={duration}
+                step={0.01}
+                className="flex-1"
+              />
+            </div>
+
+            <div className="text-sm font-mono text-muted-foreground whitespace-nowrap">
+              {formatTime(currentTime)} / {formatTime(duration)}
+            </div>
+          </div>
+
+          {/* Media Controls */}
+          <div className="flex items-center gap-2 flex-wrap">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => document.getElementById('file-upload')?.click()}
+              className="gap-2"
+            >
+              <Upload className="w-4 h-4" />
+              Upload
+            </Button>
+            <input
+              id="file-upload"
+              type="file"
+              multiple
+              accept="image/*,video/*,audio/*"
+              className="hidden"
+              onChange={(e) => {
+                console.log('Files selected:', e.target.files);
+              }}
+            />
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAddClip('image')}
+              className="gap-2"
+            >
+              <Image className="w-4 h-4" />
+              Add Image
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAddClip('video')}
+              className="gap-2"
+            >
+              <Video className="w-4 h-4" />
+              Add Video
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAddClip('audio')}
+              className="gap-2"
+            >
+              <Music className="w-4 h-4" />
+              Add Audio
+            </Button>
+
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => handleAddClip('text')}
+              className="gap-2"
+            >
+              <Type className="w-4 h-4" />
+              Add Text
+            </Button>
+          </div>
+        </div>
+
+        {/* Timeline Section */}
+        <div className="flex-1 flex overflow-hidden border-t border-border bg-background">
+          {/* Left Sidebar - Track Labels */}
+          <div className="w-32 bg-card border-r border-border flex flex-col">
+            {tracks.map((track) => (
+              <div
+                key={track.id}
+                className="flex-1 border-b border-border flex items-center px-3 py-2 text-sm font-medium text-muted-foreground"
+                style={{ minHeight: track.height }}
+              >
+                {track.label}
+              </div>
+            ))}
+          </div>
+
+          {/* Timeline Editor */}
+          <div className="flex-1 overflow-auto">
+            <TimelineEditor
+              tracks={tracks}
+              currentTime={currentTime}
+              duration={duration}
+              zoomLevel={zoomLevel}
+              selectedClipId={selectedClipId}
+              onSelectClip={setSelectedClipId}
+              onDeleteClip={handleDeleteClip}
+              onDuplicateClip={handleDuplicateClip}
+              onUpdateClip={(clipId: string, updates: Partial<Clip>) => {
+                setTracks(prev =>
+                  prev.map(track => ({
+                    ...track,
+                    clips: track.clips.map(clip =>
+                      clip.id === clipId ? { ...clip, ...updates } : clip
+                    ),
+                  }))
+                );
+              }}
+              onSeek={setCurrentTime}
+            />
+          </div>
+
+          {/* Right Sidebar - Zoom Controls */}
+          <div className="w-16 bg-card border-l border-border flex flex-col items-center justify-center gap-2 p-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setZoomLevel(Math.min(zoomLevel + 0.1, 3))}
+              className="w-10 h-10 p-0"
+              title="Zoom In"
+            >
+              <ZoomIn className="w-4 h-4" />
+            </Button>
+            <div className="text-xs text-muted-foreground">
+              {Math.round(zoomLevel * 100)}%
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setZoomLevel(Math.max(zoomLevel - 0.1, 0.5))}
+              className="w-10 h-10 p-0"
+              title="Zoom Out"
+            >
+              <ZoomOut className="w-4 h-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      {/* Clip Properties Panel */}
+      {selectedClipId && (
+        <ClipProperties
+          clip={tracks.flatMap(t => t.clips).find(c => c.id === selectedClipId) || null}
+          onClose={() => setSelectedClipId(null)}
+          onUpdate={(clipId, updates) => {
+            setTracks(prev =>
+              prev.map(track => ({
+                ...track,
+                clips: track.clips.map(clip =>
+                  clip.id === clipId ? { ...clip, ...updates } : clip
+                ),
+              }))
+            );
+          }}
+        />
+      )}
     </div>
   );
 }
