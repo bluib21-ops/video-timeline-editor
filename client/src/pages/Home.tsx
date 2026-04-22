@@ -340,7 +340,8 @@ export default function Home() {
                     startTime: currentTime,
                     duration: 3,
                     trackId,
-                    source: file.name,
+                    source: fileUrl,
+                    text: file.name,
                     properties: {
                       opacity: 1,
                       scale: 1,
@@ -355,14 +356,17 @@ export default function Home() {
                   setTracks(prev => 
                     prev.map(track => 
                       track.id === trackId 
-                        ? { ...track, clips: [...track.clips, newClip] }
+                        ? { ...track, clips: [...track.clips, { ...newClip, text: `${file.name}` }] }
                         : track
                     )
                   );
                 });
 
                 // Reset input
-                e.target.value = '';
+                const input = e.target as HTMLInputElement;
+                if (input) {
+                  input.value = '';
+                }
               }}
             />
 

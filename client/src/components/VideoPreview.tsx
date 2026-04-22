@@ -48,6 +48,52 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
     const videoCache = useRef<Map<string, HTMLVideoElement>>(new Map());
+    const mediaElementsRef = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
+
+    // Preload media files
+    useEffect(() => {
+      const videoTrack = tracks.find(t => t.type === 'video');
+      if (!videoTrack) return;
+
+      videoTrack.clips.forEach(clip => {
+        if (!clip.source || clip.source.includes('sample')) return;
+
+        // Check if already loaded
+        if (mediaElementsRef.current.has(clip.id)) return;
+
+        if (clip.type === 'image') {
+          const img = new Image();
+          img.crossOrigin = 'anonymous';
+          img.onload = () => {
+            mediaElementsRef.current.set(clip.id, img);
+          };
+          img.onerror = () => {
+            console.warn(`Failed to load image: ${clip.source}`);
+          };
+          // Try to load from blob URL or file path
+          try {
+            img.src = clip.source;
+          } catch (e) {
+            console.warn(`Could not load image: ${clip.source}`);
+          }
+        } else if (clip.type === 'video') {
+          const video = document.createElement('video');
+          video.crossOrigin = 'anonymous';
+          video.onloadedmetadata = () => {
+            mediaElementsRef.current.set(clip.id, video);
+          };
+          video.onerror = () => {
+            console.warn(`Failed to load video: ${clip.source}`);
+          };
+          try {
+            video.src = clip.source;
+            video.load();
+          } catch (e) {
+            console.warn(`Could not load video: ${clip.source}`);
+          }
+        }
+      });
+    }, [tracks]);
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -154,32 +200,35 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
 
-      // Try to draw actual media if source exists
-      if (clip.source && clip.source !== 'video-sample' && clip.source !== 'image-sample') {
+      // Try to draw actual media if loaded
+      const media = mediaElementsRef.current.get(clip.id);
+      if (media) {
         try {
-          // For uploaded files, we'd need to load them
-          // For now, draw a placeholder with the filename
-          const placeholderWidth = 200;
-          const placeholderHeight = 150;
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-          ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-          ctx.lineWidth = 2;
-          ctx.fillRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-          ctx.strokeRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-
-          // Draw filename
-          ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
-          ctx.font = 'bold 12px Inter, sans-serif';
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-          const filename = clip.source.substring(0, 20);
-          ctx.fillText(filename, 0, -10);
-          ctx.font = '10px Inter, sans-serif';
-          ctx.fillText(clip.type.toUpperCase(), 0, 10);
+          const mediaWidth = (media as any).width || 200;
+          const mediaHeight = (media as any).height || 150;
+          ctx.drawImage(media as any, -mediaWidth / 2, -mediaHeight / 2, mediaWidth, mediaHeight);
         } catch (e) {
-          // Fallback to placeholder
           drawPlaceholder(ctx, clip.type);
         }
+      } else if (clip.source && clip.source !== 'video-sample' && clip.source !== 'image-sample') {
+        // Draw filename placeholder while loading
+        const placeholderWidth = 200;
+        const placeholderHeight = 150;
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+        ctx.lineWidth = 2;
+        ctx.fillRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
+        ctx.strokeRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
+
+        // Draw filename
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
+        ctx.font = 'bold 12px Inter, sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        const filename = clip.source.substring(0, 20);
+        ctx.fillText(filename, 0, -10);
+        ctx.font = '10px Inter, sans-serif';
+        ctx.fillText(clip.type.toUpperCase(), 0, 10);
       } else {
         drawPlaceholder(ctx, clip.type);
       }
