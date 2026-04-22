@@ -18,6 +18,7 @@ import { useEffect, useRef, useState } from "react";
 import TimelineEditor from "@/components/TimelineEditor";
 import VideoPreview from "@/components/VideoPreview";
 import ClipProperties from "@/components/ClipProperties";
+import ExportButton from "@/components/ExportButton";
 import { useKeyboardShortcuts } from "@/components/KeyboardShortcuts";
 
 /**
@@ -295,6 +296,14 @@ export default function Home() {
 
           {/* Media Controls */}
           <div className="flex items-center gap-2 flex-wrap">
+            <ExportButton
+              tracks={tracks}
+              duration={duration}
+              width={800}
+              height={450}
+              fps={30}
+            />
+            
             <Button
               size="sm"
               variant="outline"
@@ -311,7 +320,49 @@ export default function Home() {
               accept="image/*,video/*,audio/*"
               className="hidden"
               onChange={(e) => {
-                console.log('Files selected:', e.target.files);
+                const files = e.target.files;
+                if (!files) return;
+
+                Array.from(files).forEach((file) => {
+                  const fileType = file.type.split('/')[0];
+                  let clipType: 'video' | 'image' | 'audio' | 'text' = 'video';
+                  
+                  if (fileType === 'image') clipType = 'image';
+                  else if (fileType === 'audio') clipType = 'audio';
+                  else if (fileType === 'video') clipType = 'video';
+
+                  const fileUrl = URL.createObjectURL(file);
+                  const trackId = clipType === 'audio' ? 'track-2' : 'track-1';
+                  
+                  const newClip: Clip = {
+                    id: `clip-${Date.now()}-${Math.random()}`,
+                    type: clipType,
+                    startTime: currentTime,
+                    duration: 3,
+                    trackId,
+                    source: file.name,
+                    properties: {
+                      opacity: 1,
+                      scale: 1,
+                      rotation: 0,
+                      x: 0,
+                      y: 0,
+                      fontSize: 24,
+                      color: '#ffffff',
+                    },
+                  };
+
+                  setTracks(prev => 
+                    prev.map(track => 
+                      track.id === trackId 
+                        ? { ...track, clips: [...track.clips, newClip] }
+                        : track
+                    )
+                  );
+                });
+
+                // Reset input
+                e.target.value = '';
               }}
             />
 

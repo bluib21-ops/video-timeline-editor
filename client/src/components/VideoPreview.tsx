@@ -47,6 +47,7 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
   ({ currentTime, tracks, width, height }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
+    const videoCache = useRef<Map<string, HTMLVideoElement>>(new Map());
 
     useEffect(() => {
       const canvas = canvasRef.current;
@@ -102,6 +103,18 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
         });
       }
 
+      // Draw audio indicator if audio is playing
+      const audioTrack = tracks.find(t => t.type === 'audio');
+      if (audioTrack) {
+        const activeAudioClips = audioTrack.clips.filter(
+          clip => currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration
+        );
+
+        if (activeAudioClips.length > 0) {
+          drawAudioIndicator(ctx, width, height);
+        }
+      }
+
       // Draw center crosshair
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
       ctx.lineWidth = 1;
@@ -141,7 +154,43 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
 
-      // Draw placeholder rectangle for media
+      // Try to draw actual media if source exists
+      if (clip.source && clip.source !== 'video-sample' && clip.source !== 'image-sample') {
+        try {
+          // For uploaded files, we'd need to load them
+          // For now, draw a placeholder with the filename
+          const placeholderWidth = 200;
+          const placeholderHeight = 150;
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+          ctx.lineWidth = 2;
+          ctx.fillRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
+          ctx.strokeRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
+
+          // Draw filename
+          ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
+          ctx.font = 'bold 12px Inter, sans-serif';
+          ctx.textAlign = 'center';
+          ctx.textBaseline = 'middle';
+          const filename = clip.source.substring(0, 20);
+          ctx.fillText(filename, 0, -10);
+          ctx.font = '10px Inter, sans-serif';
+          ctx.fillText(clip.type.toUpperCase(), 0, 10);
+        } catch (e) {
+          // Fallback to placeholder
+          drawPlaceholder(ctx, clip.type);
+        }
+      } else {
+        drawPlaceholder(ctx, clip.type);
+      }
+
+      ctx.restore();
+    };
+
+    const drawPlaceholder = (
+      ctx: CanvasRenderingContext2D,
+      type: string
+    ) => {
       const placeholderWidth = 200;
       const placeholderHeight = 150;
       ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
@@ -155,11 +204,9 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.font = 'bold 14px Inter, sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText(clip.type.toUpperCase(), 0, -20);
+      ctx.fillText(type.toUpperCase(), 0, -20);
       ctx.font = '12px Inter, sans-serif';
-      ctx.fillText(clip.source || 'Sample', 0, 10);
-
-      ctx.restore();
+      ctx.fillText('Media Preview', 0, 10);
     };
 
     const drawTextClip = (
@@ -188,6 +235,30 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(clip.text || 'Text', 0, 0);
+
+      ctx.restore();
+    };
+
+    const drawAudioIndicator = (
+      ctx: CanvasRenderingContext2D,
+      canvasWidth: number,
+      canvasHeight: number
+    ) => {
+      // Draw audio waveform indicator
+      ctx.save();
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
+      ctx.fillRect(canvasWidth - 60, 10, 50, 30);
+
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let i = 0; i < 5; i++) {
+        const x = canvasWidth - 55 + i * 10;
+        const height = 10 + Math.random() * 15;
+        ctx.moveTo(x, 25 - height / 2);
+        ctx.lineTo(x, 25 + height / 2);
+      }
+      ctx.stroke();
 
       ctx.restore();
     };
