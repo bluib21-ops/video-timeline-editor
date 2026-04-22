@@ -100,8 +100,8 @@ export default function Home() {
       source: type === 'text' ? 'Sample Text' : `${type}-sample`,
       text: type === 'text' ? 'Add your text here' : undefined,
       properties: {
-        opacity: 1,
-        scale: 1,
+        opacity: 100,
+        scale: 100,
         rotation: 0,
         x: 0,
         y: 0,
@@ -343,8 +343,8 @@ export default function Home() {
                     source: fileUrl,
                     text: file.name,
                     properties: {
-                      opacity: 1,
-                      scale: 1,
+                      opacity: 100,
+                      scale: 100,
                       rotation: 0,
                       x: 0,
                       y: 0,

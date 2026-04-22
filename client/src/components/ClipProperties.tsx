@@ -77,14 +77,15 @@ export default function ClipProperties({
         {/* Opacity */}
         <div>
           <label className="text-xs font-medium text-muted-foreground">
-            Opacity: {Math.round((props.opacity ?? 1) * 100)}%
+            Opacity: {Math.round(props.opacity ?? 100)}%
           </label>
           <Slider
-            value={[(props.opacity ?? 1) * 100]}
+            value={[props.opacity ?? 100]}
             onValueChange={([value]) =>
-              handlePropertyChange('opacity', value / 100)
+              handlePropertyChange('opacity', value)
             }
             max={100}
+            min={0}
             step={1}
             className="mt-2"
           />
@@ -93,12 +94,12 @@ export default function ClipProperties({
         {/* Scale */}
         <div>
           <label className="text-xs font-medium text-muted-foreground">
-            Scale: {((props.scale ?? 1) * 100).toFixed(0)}%
+            Scale: {Math.round(props.scale ?? 100)}%
           </label>
           <Slider
-            value={[(props.scale ?? 1) * 100]}
+            value={[props.scale ?? 100]}
             onValueChange={([value]) =>
-              handlePropertyChange('scale', value / 100)
+              handlePropertyChange('scale', value)
             }
             max={200}
             min={10}

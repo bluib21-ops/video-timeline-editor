@@ -1,14 +1,5 @@
 import { forwardRef, useEffect, useRef } from 'react';
 
-/**
- * VideoPreview Component
- * 
- * Design: Cinematic Dark Minimalism
- * - Canvas-based rendering for real-time preview
- * - Displays current frame from all active tracks
- * - Supports video, images, text, and audio visualization
- */
-
 interface Clip {
   id: string;
   type: 'video' | 'image' | 'audio' | 'text';
@@ -46,51 +37,46 @@ interface VideoPreviewProps {
 const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
   ({ currentTime, tracks, width, height }, ref) => {
     const canvasRef = useRef<HTMLCanvasElement>(null);
-    const imageCache = useRef<Map<string, HTMLImageElement>>(new Map());
-    const videoCache = useRef<Map<string, HTMLVideoElement>>(new Map());
-    const mediaElementsRef = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
+    const mediaCache = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
+    const loadingRef = useRef<Set<string>>(new Set());
 
-    // Preload media files
+    // Load media files
     useEffect(() => {
       const videoTrack = tracks.find(t => t.type === 'video');
       if (!videoTrack) return;
 
       videoTrack.clips.forEach(clip => {
-        if (!clip.source || clip.source.includes('sample')) return;
+        if (!clip.source) return;
+        if (mediaCache.current.has(clip.id)) return;
+        if (loadingRef.current.has(clip.id)) return;
 
-        // Check if already loaded
-        if (mediaElementsRef.current.has(clip.id)) return;
+        loadingRef.current.add(clip.id);
 
         if (clip.type === 'image') {
           const img = new Image();
           img.crossOrigin = 'anonymous';
           img.onload = () => {
-            mediaElementsRef.current.set(clip.id, img);
+            mediaCache.current.set(clip.id, img);
+            loadingRef.current.delete(clip.id);
           };
           img.onerror = () => {
             console.warn(`Failed to load image: ${clip.source}`);
+            loadingRef.current.delete(clip.id);
           };
-          // Try to load from blob URL or file path
-          try {
-            img.src = clip.source;
-          } catch (e) {
-            console.warn(`Could not load image: ${clip.source}`);
-          }
+          img.src = clip.source;
         } else if (clip.type === 'video') {
           const video = document.createElement('video');
           video.crossOrigin = 'anonymous';
           video.onloadedmetadata = () => {
-            mediaElementsRef.current.set(clip.id, video);
+            mediaCache.current.set(clip.id, video);
+            loadingRef.current.delete(clip.id);
           };
           video.onerror = () => {
             console.warn(`Failed to load video: ${clip.source}`);
+            loadingRef.current.delete(clip.id);
           };
-          try {
-            video.src = clip.source;
-            video.load();
-          } catch (e) {
-            console.warn(`Could not load video: ${clip.source}`);
-          }
+          video.src = clip.source || '';
+          video.load();
         }
       });
     }, [tracks]);
@@ -102,11 +88,11 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Clear canvas with dark background
+      // Clear canvas
       ctx.fillStyle = '#0f0f0f';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid background
+      // Draw grid
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
       ctx.lineWidth = 1;
       const gridSize = 50;
@@ -123,16 +109,17 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
         ctx.stroke();
       }
 
-      // Get active clips at current time
+      // Draw video track clips
       const videoTrack = tracks.find(t => t.type === 'video');
       if (videoTrack) {
-        const activeClips = videoTrack.clips.filter(
-          clip => currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration
-        );
-
-        activeClips.forEach(clip => {
-          if (clip.type === 'image' || clip.type === 'video') {
-            drawMediaClip(ctx, clip, width, height);
+        videoTrack.clips.forEach(clip => {
+          if (currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration) {
+            const media = mediaCache.current.get(clip.id);
+            if (media) {
+              drawMedia(ctx, media, clip, width, height);
+            } else if (clip.source) {
+              drawLoadingPlaceholder(ctx, clip, width, height);
+            }
           }
         });
       }
@@ -140,40 +127,23 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       // Draw text overlays
       const textTrack = tracks.find(t => t.type === 'text');
       if (textTrack) {
-        const activeTextClips = textTrack.clips.filter(
-          clip => currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration
-        );
-
-        activeTextClips.forEach(clip => {
-          drawTextClip(ctx, clip, width, height);
+        textTrack.clips.forEach(clip => {
+          if (currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration) {
+            drawText(ctx, clip, width, height);
+          }
         });
       }
 
-      // Draw audio indicator if audio is playing
+      // Draw audio indicator
       const audioTrack = tracks.find(t => t.type === 'audio');
       if (audioTrack) {
-        const activeAudioClips = audioTrack.clips.filter(
+        const hasAudio = audioTrack.clips.some(
           clip => currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration
         );
-
-        if (activeAudioClips.length > 0) {
+        if (hasAudio) {
           drawAudioIndicator(ctx, width, height);
         }
       }
-
-      // Draw center crosshair
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
-      ctx.lineWidth = 1;
-      ctx.setLineDash([5, 5]);
-      ctx.beginPath();
-      ctx.moveTo(width / 2, 0);
-      ctx.lineTo(width / 2, height);
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(0, height / 2);
-      ctx.lineTo(width, height / 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
 
       // Forward ref
       if (ref && typeof ref === 'object') {
@@ -181,15 +151,16 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       }
     }, [currentTime, tracks, width, height, ref]);
 
-    const drawMediaClip = (
+    const drawMedia = (
       ctx: CanvasRenderingContext2D,
+      media: HTMLImageElement | HTMLVideoElement,
       clip: Clip,
       canvasWidth: number,
       canvasHeight: number
     ) => {
       const props = clip.properties || {};
-      const opacity = props.opacity ?? 1;
-      const scale = props.scale ?? 1;
+      const opacity = (props.opacity ?? 100) / 100;
+      const scale = (props.scale ?? 100) / 100;
       const rotation = props.rotation ?? 0;
       const x = props.x ?? 0;
       const y = props.y ?? 0;
@@ -200,73 +171,64 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
 
-      // Try to draw actual media if loaded
-      const media = mediaElementsRef.current.get(clip.id);
-      if (media) {
-        try {
-          const mediaWidth = (media as any).width || 200;
-          const mediaHeight = (media as any).height || 150;
-          ctx.drawImage(media as any, -mediaWidth / 2, -mediaHeight / 2, mediaWidth, mediaHeight);
-        } catch (e) {
-          drawPlaceholder(ctx, clip.type);
-        }
-      } else if (clip.source && clip.source !== 'video-sample' && clip.source !== 'image-sample') {
-        // Draw filename placeholder while loading
-        const placeholderWidth = 200;
-        const placeholderHeight = 150;
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-        ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
-        ctx.lineWidth = 2;
-        ctx.fillRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-        ctx.strokeRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-
-        // Draw filename
-        ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
-        ctx.font = 'bold 12px Inter, sans-serif';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'middle';
-        const filename = clip.source.substring(0, 20);
-        ctx.fillText(filename, 0, -10);
-        ctx.font = '10px Inter, sans-serif';
-        ctx.fillText(clip.type.toUpperCase(), 0, 10);
-      } else {
-        drawPlaceholder(ctx, clip.type);
+      try {
+        const mediaWidth = media.width || 400;
+        const mediaHeight = media.height || 300;
+        ctx.drawImage(media, -mediaWidth / 2, -mediaHeight / 2, mediaWidth, mediaHeight);
+      } catch (e) {
+        console.warn('Error drawing media:', e);
       }
 
       ctx.restore();
     };
 
-    const drawPlaceholder = (
-      ctx: CanvasRenderingContext2D,
-      type: string
-    ) => {
-      const placeholderWidth = 200;
-      const placeholderHeight = 150;
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
-      ctx.lineWidth = 2;
-      ctx.fillRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-      ctx.strokeRect(-placeholderWidth / 2, -placeholderHeight / 2, placeholderWidth, placeholderHeight);
-
-      // Draw media type icon
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
-      ctx.font = 'bold 14px Inter, sans-serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillText(type.toUpperCase(), 0, -20);
-      ctx.font = '12px Inter, sans-serif';
-      ctx.fillText('Media Preview', 0, 10);
-    };
-
-    const drawTextClip = (
+    const drawLoadingPlaceholder = (
       ctx: CanvasRenderingContext2D,
       clip: Clip,
       canvasWidth: number,
       canvasHeight: number
     ) => {
       const props = clip.properties || {};
-      const opacity = props.opacity ?? 1;
-      const scale = props.scale ?? 1;
+      const opacity = (props.opacity ?? 100) / 100;
+      const scale = (props.scale ?? 100) / 100;
+      const rotation = props.rotation ?? 0;
+      const x = props.x ?? 0;
+      const y = props.y ?? 0;
+
+      ctx.save();
+      ctx.globalAlpha = opacity;
+      ctx.translate(canvasWidth / 2 + x, canvasHeight / 2 + y);
+      ctx.rotate((rotation * Math.PI) / 180);
+      ctx.scale(scale, scale);
+
+      const w = 200;
+      const h = 150;
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+      ctx.lineWidth = 2;
+      ctx.fillRect(-w / 2, -h / 2, w, h);
+      ctx.strokeRect(-w / 2, -h / 2, w, h);
+
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.font = 'bold 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Loading...', 0, -10);
+      ctx.font = '10px Arial';
+      ctx.fillText(clip.type.toUpperCase(), 0, 10);
+
+      ctx.restore();
+    };
+
+    const drawText = (
+      ctx: CanvasRenderingContext2D,
+      clip: Clip,
+      canvasWidth: number,
+      canvasHeight: number
+    ) => {
+      const props = clip.properties || {};
+      const opacity = (props.opacity ?? 100) / 100;
+      const scale = (props.scale ?? 100) / 100;
       const rotation = props.rotation ?? 0;
       const x = props.x ?? 0;
       const y = props.y ?? 0;
@@ -280,7 +242,7 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.scale(scale, scale);
 
       ctx.fillStyle = color;
-      ctx.font = `bold ${fontSize}px Inter, sans-serif`;
+      ctx.font = `bold ${fontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(clip.text || 'Text', 0, 0);
@@ -293,21 +255,20 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       canvasWidth: number,
       canvasHeight: number
     ) => {
-      // Draw audio waveform indicator
       ctx.save();
       ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
       ctx.fillRect(canvasWidth - 60, 10, 50, 30);
 
       ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
       ctx.lineWidth = 2;
-      ctx.beginPath();
       for (let i = 0; i < 5; i++) {
         const x = canvasWidth - 55 + i * 10;
-        const height = 10 + Math.random() * 15;
-        ctx.moveTo(x, 25 - height / 2);
-        ctx.lineTo(x, 25 + height / 2);
+        const h = 10 + Math.random() * 15;
+        ctx.beginPath();
+        ctx.moveTo(x, 25 - h / 2);
+        ctx.lineTo(x, 25 + h / 2);
+        ctx.stroke();
       }
-      ctx.stroke();
 
       ctx.restore();
     };
