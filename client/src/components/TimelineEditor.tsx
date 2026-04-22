@@ -278,6 +278,18 @@ export default function TimelineEditor({
                   }}
                 />
 
+                {/* Delete Button */}
+                <button
+                  className="absolute top-0.5 right-0.5 p-1 bg-destructive/80 hover:bg-destructive text-destructive-foreground rounded opacity-0 group-hover:opacity-100 transition-opacity z-20"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDeleteClip(clip.id);
+                  }}
+                  title="Delete clip"
+                >
+                  <Trash2 className="w-3 h-3" />
+                </button>
+
                 {/* Duration Label */}
                 {clip.duration * pixelsPerSecond > 60 && (
                   <div className="absolute bottom-0 right-2 text-xs text-muted-foreground opacity-60 pointer-events-none">

@@ -333,12 +333,39 @@ export default function Home() {
 
                   const fileUrl = URL.createObjectURL(file);
                   const trackId = clipType === 'audio' ? 'track-2' : 'track-1';
+                  const clipId = `clip-${Date.now()}-${Math.random()}`;
+                  
+                  // Default duration is 5 seconds
+                  let duration = 5;
+                  
+                  // For videos, try to get actual duration
+                  if (clipType === 'video') {
+                    const video = document.createElement('video');
+                    video.src = fileUrl;
+                    video.onloadedmetadata = () => {
+                      const videoDuration = video.duration || 5;
+                      setTracks(prev => 
+                        prev.map(track => 
+                          track.id === trackId
+                            ? {
+                                ...track,
+                                clips: track.clips.map(c => 
+                                  c.id === clipId 
+                                    ? { ...c, duration: videoDuration }
+                                    : c
+                                )
+                              }
+                            : track
+                        )
+                      );
+                    };
+                  }
                   
                   const newClip: Clip = {
-                    id: `clip-${Date.now()}-${Math.random()}`,
+                    id: clipId,
                     type: clipType,
                     startTime: currentTime,
-                    duration: 3,
+                    duration,
                     trackId,
                     source: fileUrl,
                     text: file.name,
@@ -356,7 +383,7 @@ export default function Home() {
                   setTracks(prev => 
                     prev.map(track => 
                       track.id === trackId 
-                        ? { ...track, clips: [...track.clips, { ...newClip, text: `${file.name}` }] }
+                        ? { ...track, clips: [...track.clips, newClip] }
                         : track
                     )
                   );
