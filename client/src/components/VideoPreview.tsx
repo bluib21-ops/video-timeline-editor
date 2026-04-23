@@ -67,6 +67,7 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
         } else if (clip.type === 'video') {
           const video = document.createElement('video');
           video.crossOrigin = 'anonymous';
+          video.preload = 'metadata';
           video.onloadedmetadata = () => {
             mediaCache.current.set(clip.id, video);
             loadingRef.current.delete(clip.id);
@@ -88,12 +89,12 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
 
-      // Clear canvas
+      // Clear canvas with dark background
       ctx.fillStyle = '#0f0f0f';
       ctx.fillRect(0, 0, width, height);
 
-      // Draw grid
-      ctx.strokeStyle = 'rgba(255, 255, 255, 0.05)';
+      // Draw subtle grid
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.03)';
       ctx.lineWidth = 1;
       const gridSize = 50;
       for (let x = 0; x < width; x += gridSize) {
@@ -109,6 +110,18 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
         ctx.stroke();
       }
 
+      // Draw center crosshair
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(width / 2, 0);
+      ctx.lineTo(width / 2, height);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(0, height / 2);
+      ctx.lineTo(width, height / 2);
+      ctx.stroke();
+
       // Draw video track clips
       const videoTrack = tracks.find(t => t.type === 'video');
       if (videoTrack) {
@@ -116,6 +129,11 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
           if (currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration) {
             const media = mediaCache.current.get(clip.id);
             if (media) {
+              // For videos, seek to the correct frame
+              if (clip.type === 'video' && media instanceof HTMLVideoElement) {
+                const clipProgress = currentTime - clip.startTime;
+                media.currentTime = clipProgress;
+              }
               drawMedia(ctx, media, clip, width, height);
             } else if (clip.source) {
               drawLoadingPlaceholder(ctx, clip, width, height);
@@ -172,8 +190,19 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.scale(scale, scale);
 
       try {
-        const mediaWidth = media.width || 400;
-        const mediaHeight = media.height || 300;
+        // Get actual dimensions
+        let mediaWidth = 0;
+        let mediaHeight = 0;
+
+        if (media instanceof HTMLVideoElement) {
+          mediaWidth = media.videoWidth || 640;
+          mediaHeight = media.videoHeight || 480;
+        } else if (media instanceof HTMLImageElement) {
+          mediaWidth = media.naturalWidth || media.width || 640;
+          mediaHeight = media.naturalHeight || media.height || 480;
+        }
+
+        // Draw media centered
         ctx.drawImage(media, -mediaWidth / 2, -mediaHeight / 2, mediaWidth, mediaHeight);
       } catch (e) {
         console.warn('Error drawing media:', e);
@@ -201,21 +230,48 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.rotate((rotation * Math.PI) / 180);
       ctx.scale(scale, scale);
 
-      const w = 200;
-      const h = 150;
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.15)';
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.6)';
+      const w = 300;
+      const h = 200;
+      
+      // Draw rounded rectangle background
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.1)';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.5)';
       ctx.lineWidth = 2;
-      ctx.fillRect(-w / 2, -h / 2, w, h);
-      ctx.strokeRect(-w / 2, -h / 2, w, h);
+      
+      const radius = 8;
+      ctx.beginPath();
+      ctx.moveTo(-w / 2 + radius, -h / 2);
+      ctx.lineTo(w / 2 - radius, -h / 2);
+      ctx.quadraticCurveTo(w / 2, -h / 2, w / 2, -h / 2 + radius);
+      ctx.lineTo(w / 2, h / 2 - radius);
+      ctx.quadraticCurveTo(w / 2, h / 2, w / 2 - radius, h / 2);
+      ctx.lineTo(-w / 2 + radius, h / 2);
+      ctx.quadraticCurveTo(-w / 2, h / 2, -w / 2, h / 2 - radius);
+      ctx.lineTo(-w / 2, -h / 2 + radius);
+      ctx.quadraticCurveTo(-w / 2, -h / 2, -w / 2 + radius, -h / 2);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
 
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.8)';
-      ctx.font = 'bold 12px Arial';
+      // Draw loading spinner
+      ctx.save();
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(0, -20, 20, 0, Math.PI * 1.5);
+      ctx.stroke();
+      ctx.restore();
+
+      // Draw text
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.9)';
+      ctx.font = 'bold 14px Arial';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('Loading...', 0, -10);
-      ctx.font = '10px Arial';
-      ctx.fillText(clip.type.toUpperCase(), 0, 10);
+      ctx.fillText('Loading...', 0, 20);
+      
+      ctx.font = '12px Arial';
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.7)';
+      ctx.fillText(clip.type.toUpperCase(), 0, 40);
 
       ctx.restore();
     };
@@ -245,6 +301,13 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       ctx.font = `bold ${fontSize}px Arial`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
+      
+      // Add text shadow for better visibility
+      ctx.shadowColor = 'rgba(0, 0, 0, 0.8)';
+      ctx.shadowBlur = 4;
+      ctx.shadowOffsetX = 2;
+      ctx.shadowOffsetY = 2;
+      
       ctx.fillText(clip.text || 'Text', 0, 0);
 
       ctx.restore();
@@ -256,17 +319,17 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
       canvasHeight: number
     ) => {
       ctx.save();
-      ctx.fillStyle = 'rgba(16, 185, 129, 0.3)';
-      ctx.fillRect(canvasWidth - 60, 10, 50, 30);
+      ctx.fillStyle = 'rgba(16, 185, 129, 0.2)';
+      ctx.fillRect(canvasWidth - 70, 15, 60, 40);
 
-      ctx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+      ctx.strokeStyle = 'rgba(16, 185, 129, 0.9)';
       ctx.lineWidth = 2;
       for (let i = 0; i < 5; i++) {
-        const x = canvasWidth - 55 + i * 10;
-        const h = 10 + Math.random() * 15;
+        const x = canvasWidth - 65 + i * 12;
+        const h = 12 + Math.random() * 18;
         ctx.beginPath();
-        ctx.moveTo(x, 25 - h / 2);
-        ctx.lineTo(x, 25 + h / 2);
+        ctx.moveTo(x, 35 - h / 2);
+        ctx.lineTo(x, 35 + h / 2);
         ctx.stroke();
       }
 
@@ -278,7 +341,7 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
         ref={canvasRef}
         width={width}
         height={height}
-        className="border border-border rounded-lg shadow-lg bg-background"
+        className="w-full h-full border border-border rounded-lg shadow-xl bg-background"
       />
     );
   }

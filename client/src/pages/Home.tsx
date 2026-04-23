@@ -226,14 +226,16 @@ export default function Home() {
       {/* Main Content */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Preview Section */}
-        <div className="flex-1 flex flex-col items-center justify-center bg-background/50 border-b border-border p-6 overflow-auto">
-          <VideoPreview 
-            ref={canvasRef}
-            currentTime={currentTime}
-            tracks={tracks}
-            width={800}
-            height={450}
-          />
+        <div className="flex-1 flex flex-col items-center justify-center bg-background border-b border-border p-4 overflow-auto">
+          <div className="w-full max-w-5xl h-full flex items-center justify-center">
+            <VideoPreview 
+              ref={canvasRef}
+              currentTime={currentTime}
+              tracks={tracks}
+              width={1200}
+              height={675}
+            />
+          </div>
         </div>
 
         {/* Playback Controls */}
