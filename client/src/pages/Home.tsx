@@ -163,16 +163,27 @@ export default function Home() {
   useEffect(() => {
     if (!isPlaying) return;
 
+    let lastTime = Date.now();
+    const targetFPS = 30;
+    const frameTime = 1000 / targetFPS;
+
     const animate = () => {
-      setCurrentTime(prev => {
-        const newTime = prev + 1 / 30;
-        if (newTime >= duration) {
-          setIsPlaying(false);
-          setCurrentTime(0);
-          return 0;
-        }
-        return newTime;
-      });
+      const now = Date.now();
+      const elapsed = now - lastTime;
+
+      if (elapsed >= frameTime) {
+        setCurrentTime(prev => {
+          const newTime = prev + (frameTime / 1000);
+          if (newTime >= duration) {
+            setIsPlaying(false);
+            setCurrentTime(0);
+            return 0;
+          }
+          return newTime;
+        });
+        lastTime = now;
+      }
+
       animationRef.current = requestAnimationFrame(animate);
     };
 
