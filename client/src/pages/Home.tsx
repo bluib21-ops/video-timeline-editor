@@ -346,6 +346,7 @@ export default function Home() {
                     video.src = fileUrl;
                     video.onloadedmetadata = () => {
                       const videoDuration = video.duration || 5;
+                      setDuration(prev => Math.max(prev, videoDuration + 2));
                       setTracks(prev => 
                         prev.map(track => 
                           track.id === trackId
