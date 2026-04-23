@@ -165,16 +165,18 @@ export default function Home() {
 
   // Audio playback synchronization
   useEffect(() => {
-    const audioTrack = tracks.find(t => t.type === 'audio');
-    if (!audioTrack) return;
-
-    audioTrack.clips.forEach(clip => {
-      if (!clip.source) return;
+    // Handle both audio track and video track audio
+    const allClips = tracks.flatMap(t => t.clips);
+    
+    allClips.forEach(clip => {
+      // Only process audio and video clips with sound
+      if ((clip.type !== 'audio' && clip.type !== 'video') || !clip.source) return;
 
       let audio = audioPlayersRef.current.get(clip.id);
       if (!audio) {
         audio = new Audio();
         audio.src = clip.source;
+        audio.crossOrigin = 'anonymous';
         audio.volume = volume / 100;
         audio.muted = isMuted;
         audioPlayersRef.current.set(clip.id, audio);
@@ -191,10 +193,10 @@ export default function Home() {
       if (isClipActive && isPlaying) {
         if (audio.paused) {
           audio.currentTime = Math.max(0, clipProgress);
-          audio.play().catch(() => {});
+          audio.play().catch((err) => console.warn('Audio play error:', err));
         } else {
           // Sync audio time if it drifts
-          if (Math.abs(audio.currentTime - clipProgress) > 0.1) {
+          if (Math.abs(audio.currentTime - clipProgress) > 0.15) {
             audio.currentTime = Math.max(0, clipProgress);
           }
         }
