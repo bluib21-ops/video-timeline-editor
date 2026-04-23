@@ -136,7 +136,10 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
               // For videos, seek to the correct frame
               if (clip.type === 'video' && media instanceof HTMLVideoElement) {
                 const clipProgress = currentTime - clip.startTime;
-                media.currentTime = clipProgress;
+                // Check if seeking is needed (avoid excessive seeking)
+                if (Math.abs(media.currentTime - clipProgress) > 0.1) {
+                  media.currentTime = clipProgress;
+                }
               }
               drawMedia(ctx, media, clip, width, height);
             } else if (clip.source) {
