@@ -73,6 +73,7 @@ export default function Home() {
 
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const animationRef = useRef<number | undefined>(undefined);
+  const audioPlayersRef = useRef<Map<string, HTMLAudioElement>>(new Map());
 
   // Handler functions
   const handlePlayPause = (): void => {
@@ -81,6 +82,9 @@ export default function Home() {
 
   const handleMute = (): void => {
     setIsMuted(!isMuted);
+    audioPlayersRef.current.forEach(audio => {
+      audio.muted = !isMuted;
+    });
   };
 
   const handleFullscreen = (): void => {
@@ -90,33 +94,35 @@ export default function Home() {
   };
 
   const handleAddClip = (type: 'video' | 'image' | 'audio' | 'text'): void => {
-    const trackId = type === 'audio' ? 'track-2' : type === 'text' ? 'track-3' : 'track-1';
-    const newClip: Clip = {
-      id: `clip-${Date.now()}`,
-      type,
-      startTime: currentTime,
-      duration: 2,
-      trackId,
-      source: type === 'text' ? 'Sample Text' : `${type}-sample`,
-      text: type === 'text' ? 'Add your text here' : undefined,
-      properties: {
-        opacity: 100,
-        scale: 100,
-        rotation: 0,
-        x: 0,
-        y: 0,
-        fontSize: 24,
-        color: '#ffffff',
-      },
-    };
+    if (type === 'text') {
+      const newClip: Clip = {
+        id: `clip-${Date.now()}`,
+        type: 'text',
+        startTime: currentTime,
+        duration: 5,
+        trackId: 'track-3',
+        text: 'Sample Text',
+        properties: {
+          opacity: 100,
+          scale: 100,
+          rotation: 0,
+          x: 0,
+          y: 0,
+          fontSize: 24,
+          color: '#ffffff',
+        },
+      };
 
-    setTracks(prev => 
-      prev.map(track => 
-        track.id === trackId 
-          ? { ...track, clips: [...track.clips, newClip] }
-          : track
-      )
-    );
+      setTracks(prev =>
+        prev.map(track =>
+          track.id === 'track-3'
+            ? { ...track, clips: [...track.clips, newClip] }
+            : track
+        )
+      );
+    } else {
+      document.getElementById('file-upload')?.click();
+    }
   };
 
   const handleDeleteClip = (clipId: string): void => {
@@ -130,24 +136,22 @@ export default function Home() {
   };
 
   const handleDuplicateClip = (clipId: string): void => {
-    const clip = tracks
-      .flatMap(t => t.clips)
-      .find(c => c.id === clipId);
-    
-    if (!clip) return;
-
-    const newClip: Clip = {
-      ...clip,
-      id: `clip-${Date.now()}`,
-      startTime: clip.startTime + clip.duration,
-    };
-
     setTracks(prev =>
-      prev.map(track =>
-        track.id === clip.trackId
-          ? { ...track, clips: [...track.clips, newClip] }
-          : track
-      )
+      prev.map(track => {
+        const clip = track.clips.find(c => c.id === clipId);
+        if (!clip) return track;
+
+        const newClip = {
+          ...clip,
+          id: `clip-${Date.now()}`,
+          startTime: clip.startTime + clip.duration,
+        };
+
+        return {
+          ...track,
+          clips: [...track.clips, newClip],
+        };
+      })
     );
   };
 
@@ -158,6 +162,49 @@ export default function Home() {
     onDuplicate: () => selectedClipId && handleDuplicateClip(selectedClipId),
     selectedClipId,
   });
+
+  // Audio playback synchronization
+  useEffect(() => {
+    const audioTrack = tracks.find(t => t.type === 'audio');
+    if (!audioTrack) return;
+
+    audioTrack.clips.forEach(clip => {
+      if (!clip.source) return;
+
+      let audio = audioPlayersRef.current.get(clip.id);
+      if (!audio) {
+        audio = new Audio();
+        audio.src = clip.source;
+        audio.volume = volume / 100;
+        audio.muted = isMuted;
+        audioPlayersRef.current.set(clip.id, audio);
+      }
+
+      // Update volume and mute state
+      audio.volume = volume / 100;
+      audio.muted = isMuted;
+
+      // Check if audio should be playing
+      const isClipActive = currentTime >= clip.startTime && currentTime < clip.startTime + clip.duration;
+      const clipProgress = currentTime - clip.startTime;
+
+      if (isClipActive && isPlaying) {
+        if (audio.paused) {
+          audio.currentTime = Math.max(0, clipProgress);
+          audio.play().catch(() => {});
+        } else {
+          // Sync audio time if it drifts
+          if (Math.abs(audio.currentTime - clipProgress) > 0.1) {
+            audio.currentTime = Math.max(0, clipProgress);
+          }
+        }
+      } else {
+        if (!audio.paused) {
+          audio.pause();
+        }
+      }
+    });
+  }, [currentTime, isPlaying, tracks, volume, isMuted]);
 
   // Animation loop for playback
   useEffect(() => {
@@ -177,6 +224,10 @@ export default function Home() {
           if (newTime >= duration) {
             setIsPlaying(false);
             setCurrentTime(0);
+            audioPlayersRef.current.forEach(audio => {
+              audio.pause();
+              audio.currentTime = 0;
+            });
             return 0;
           }
           return newTime;
@@ -327,90 +378,6 @@ export default function Home() {
               <Upload className="w-4 h-4" />
               Upload
             </Button>
-            <input
-              id="file-upload"
-              type="file"
-              multiple
-              accept="image/*,video/*,audio/*"
-              className="hidden"
-              onChange={(e) => {
-                const files = e.target.files;
-                if (!files) return;
-
-                Array.from(files).forEach((file) => {
-                  const fileType = file.type.split('/')[0];
-                  let clipType: 'video' | 'image' | 'audio' | 'text' = 'video';
-                  
-                  if (fileType === 'image') clipType = 'image';
-                  else if (fileType === 'audio') clipType = 'audio';
-                  else if (fileType === 'video') clipType = 'video';
-
-                  const fileUrl = URL.createObjectURL(file);
-                  const trackId = clipType === 'audio' ? 'track-2' : 'track-1';
-                  const clipId = `clip-${Date.now()}-${Math.random()}`;
-                  
-                  // Default duration is 5 seconds
-                  let duration = 5;
-                  
-                  // For videos, try to get actual duration
-                  if (clipType === 'video') {
-                    const video = document.createElement('video');
-                    video.src = fileUrl;
-                    video.onloadedmetadata = () => {
-                      const videoDuration = video.duration || 5;
-                      setDuration(prev => Math.max(prev, videoDuration + 2));
-                      setTracks(prev => 
-                        prev.map(track => 
-                          track.id === trackId
-                            ? {
-                                ...track,
-                                clips: track.clips.map(c => 
-                                  c.id === clipId 
-                                    ? { ...c, duration: videoDuration }
-                                    : c
-                                )
-                              }
-                            : track
-                        )
-                      );
-                    };
-                  }
-                  
-                  const newClip: Clip = {
-                    id: clipId,
-                    type: clipType,
-                    startTime: currentTime,
-                    duration,
-                    trackId,
-                    source: fileUrl,
-                    text: file.name,
-                    properties: {
-                      opacity: 100,
-                      scale: 100,
-                      rotation: 0,
-                      x: 0,
-                      y: 0,
-                      fontSize: 24,
-                      color: '#ffffff',
-                    },
-                  };
-
-                  setTracks(prev => 
-                    prev.map(track => 
-                      track.id === trackId 
-                        ? { ...track, clips: [...track.clips, newClip] }
-                        : track
-                    )
-                  );
-                });
-
-                // Reset input
-                const input = e.target as HTMLInputElement;
-                if (input) {
-                  input.value = '';
-                }
-              }}
-            />
 
             <Button
               size="sm"
@@ -499,21 +466,19 @@ export default function Home() {
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setZoomLevel(Math.min(zoomLevel + 0.1, 3))}
-              className="w-10 h-10 p-0"
-              title="Zoom In"
+              onClick={() => setZoomLevel(prev => Math.min(prev + 0.1, 3))}
+              className="w-8 h-8 p-0"
             >
               <ZoomIn className="w-4 h-4" />
             </Button>
-            <div className="text-xs text-muted-foreground">
-              {Math.round(zoomLevel * 100)}%
+            <div className="text-xs text-muted-foreground text-center">
+              {(zoomLevel * 100).toFixed(0)}%
             </div>
             <Button
               size="sm"
               variant="outline"
-              onClick={() => setZoomLevel(Math.max(zoomLevel - 0.1, 0.5))}
-              className="w-10 h-10 p-0"
-              title="Zoom Out"
+              onClick={() => setZoomLevel(prev => Math.max(prev - 0.1, 0.5))}
+              className="w-8 h-8 p-0"
             >
               <ZoomOut className="w-4 h-4" />
             </Button>
@@ -521,21 +486,102 @@ export default function Home() {
         </div>
       </div>
 
+      {/* Hidden file input */}
+      <input
+        id="file-upload"
+        type="file"
+        accept="image/*,video/*,audio/*"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.currentTarget.files?.[0];
+          if (!file) return;
+
+          const fileUrl = URL.createObjectURL(file);
+          const clipId = `clip-${Date.now()}`;
+          let clipType: 'video' | 'image' | 'audio' = 'video';
+          let trackId = 'track-1';
+
+          if (file.type.startsWith('image')) {
+            clipType = 'image';
+          } else if (file.type.startsWith('audio')) {
+            clipType = 'audio';
+            trackId = 'track-2';
+          }
+
+          let duration = 5;
+
+          // Default duration is 5 seconds
+          if (clipType === 'video') {
+            const video = document.createElement('video');
+            video.src = fileUrl;
+            video.onloadedmetadata = () => {
+              const videoDuration = video.duration || 5;
+              setDuration(prev => Math.max(prev, videoDuration + 2));
+              setTracks(prev =>
+                prev.map(track =>
+                  track.id === trackId
+                    ? {
+                        ...track,
+                        clips: track.clips.map(c =>
+                          c.id === clipId
+                            ? { ...c, duration: videoDuration }
+                            : c
+                        ),
+                      }
+                    : track
+                )
+              );
+            };
+          }
+
+          const newClip: Clip = {
+            id: clipId,
+            type: clipType,
+            startTime: currentTime,
+            duration,
+            trackId,
+            source: fileUrl,
+            text: file.name,
+            properties: {
+              opacity: 100,
+              scale: 100,
+              rotation: 0,
+              x: 0,
+              y: 0,
+              fontSize: 24,
+              color: '#ffffff',
+            },
+          };
+
+          setTracks(prev =>
+            prev.map(track =>
+              track.id === trackId
+                ? { ...track, clips: [...track.clips, newClip] }
+                : track
+            )
+          );
+        }}
+      />
+
       {/* Clip Properties Panel */}
       {selectedClipId && (
         <ClipProperties
-          clip={tracks.flatMap(t => t.clips).find(c => c.id === selectedClipId) || null}
-          onClose={() => setSelectedClipId(null)}
-          onUpdate={(clipId, updates) => {
+          clip={tracks
+            .flatMap(t => t.clips)
+            .find(c => c.id === selectedClipId)!}
+          onUpdate={(clipId: string, updates: Partial<Clip>) => {
             setTracks(prev =>
               prev.map(track => ({
                 ...track,
                 clips: track.clips.map(clip =>
-                  clip.id === clipId ? { ...clip, ...updates } : clip
+                  clip.id === clipId
+                    ? { ...clip, ...updates }
+                    : clip
                 ),
               }))
             );
           }}
+          onClose={() => setSelectedClipId(null)}
         />
       )}
     </div>
