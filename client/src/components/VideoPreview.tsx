@@ -209,8 +209,25 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
           mediaHeight = media.naturalHeight || media.height || 480;
         }
 
-        // Draw media centered
-        ctx.drawImage(media, -mediaWidth / 2, -mediaHeight / 2, mediaWidth, mediaHeight);
+        // Calculate fit dimensions maintaining aspect ratio
+        const canvasAspect = canvasWidth / canvasHeight;
+        const mediaAspect = mediaWidth / mediaHeight;
+        
+        let drawWidth = mediaWidth;
+        let drawHeight = mediaHeight;
+        
+        if (mediaAspect > canvasAspect) {
+          // Media is wider - fit to canvas width
+          drawWidth = canvasWidth * 0.95;
+          drawHeight = drawWidth / mediaAspect;
+        } else {
+          // Media is taller - fit to canvas height
+          drawHeight = canvasHeight * 0.95;
+          drawWidth = drawHeight * mediaAspect;
+        }
+
+        // Draw media centered and fitted
+        ctx.drawImage(media, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
       } catch (e) {
         console.warn('Error drawing media:', e);
       }

@@ -512,13 +512,13 @@ export default function Home() {
 
           let duration = 5;
 
-          // Default duration is 5 seconds
+          // Detect video duration
           if (clipType === 'video') {
             const video = document.createElement('video');
             video.src = fileUrl;
             video.onloadedmetadata = () => {
               const videoDuration = video.duration || 5;
-              setDuration(prev => Math.max(prev, videoDuration + 2));
+              setDuration(prev => Math.max(prev, videoDuration));
               setTracks(prev =>
                 prev.map(track =>
                   track.id === trackId
