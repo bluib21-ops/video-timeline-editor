@@ -193,20 +193,47 @@ export default function Home() {
       if (isClipActive && isPlaying) {
         if (audio.paused) {
           audio.currentTime = Math.max(0, clipProgress);
-          audio.play().catch((err) => console.warn('Audio play error:', err));
+          const playPromise = audio.play();
+          if (playPromise !== undefined) {
+            playPromise.catch((err) => console.warn('Audio play error:', err));
+          }
         } else {
-          // Sync audio time if it drifts
-          if (Math.abs(audio.currentTime - clipProgress) > 0.15) {
+          // Sync audio time if it drifts significantly
+          const timeDiff = Math.abs(audio.currentTime - clipProgress);
+          if (timeDiff > 0.2) {
             audio.currentTime = Math.max(0, clipProgress);
           }
         }
       } else {
         if (!audio.paused) {
           audio.pause();
+          audio.currentTime = 0;
         }
       }
     });
   }, [currentTime, isPlaying, tracks, volume, isMuted]);
+
+  // Cleanup audio players on unmount or when stopping
+  useEffect(() => {
+    return () => {
+      audioPlayersRef.current.forEach(audio => {
+        audio.pause();
+        audio.currentTime = 0;
+      });
+      audioPlayersRef.current.clear();
+    };
+  }, []);
+
+  // Stop all audio when playback stops
+  useEffect(() => {
+    if (!isPlaying) {
+      audioPlayersRef.current.forEach(audio => {
+        if (!audio.paused) {
+          audio.pause();
+        }
+      });
+    }
+  }, [isPlaying]);
 
   // Animation loop for playback
   useEffect(() => {
