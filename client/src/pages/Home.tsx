@@ -168,7 +168,8 @@ export default function Home() {
         const newTime = prev + 1 / 30;
         if (newTime >= duration) {
           setIsPlaying(false);
-          return duration;
+          setCurrentTime(0);
+          return 0;
         }
         return newTime;
       });

@@ -66,18 +66,22 @@ const VideoPreview = forwardRef<HTMLCanvasElement, VideoPreviewProps>(
           img.src = clip.source;
         } else if (clip.type === 'video') {
           const video = document.createElement('video');
-          video.crossOrigin = 'anonymous';
-          video.preload = 'metadata';
+          video.preload = 'auto';
           video.onloadedmetadata = () => {
             mediaCache.current.set(clip.id, video);
             loadingRef.current.delete(clip.id);
+          };
+          video.oncanplay = () => {
+            if (!mediaCache.current.has(clip.id)) {
+              mediaCache.current.set(clip.id, video);
+              loadingRef.current.delete(clip.id);
+            }
           };
           video.onerror = () => {
             console.warn(`Failed to load video: ${clip.source}`);
             loadingRef.current.delete(clip.id);
           };
           video.src = clip.source || '';
-          video.load();
         }
       });
     }, [tracks]);
